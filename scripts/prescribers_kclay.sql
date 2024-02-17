@@ -23,23 +23,32 @@ SELECT *
 FROM zip_fips
 
 --Q1a. Which prescriber had the highest total number of claims (totaled over all drugs)? Report the npi and the total number of claims.
-SELECT prescriber.npi, SUM(prescription.total_claim_count) AS total_claim
+SELECT prescriber.npi, 
+	SUM(prescription.total_claim_count) AS total_claim
 FROM prescriber
 INNER JOIN prescription
 	ON prescriber.npi = prescription.npi
 GROUP BY prescriber.npi
-ORDER BY total_claim DESC;
+ORDER BY total_claim DESC
+LIMIT 1;
 
---answer1a.) 1881634483, 99707
+--answer1a.) npi:1881634483, total claims:99707
+
 
 --Q1b.)Repeat the above, but this time report the nppes_provider_first_name, nppes_provider_last_org_name, specialty_description, and the total number of claims.
-SELECT prescriber.npi, prescriber.nppes_provider_first_name, prescriber.nppes_provider_last_org_name, prescriber.specialty_description, SUM(prescription.total_claim_count) AS total_claim
+SELECT prescriber.npi, 
+	prescriber.nppes_provider_first_name, 
+	prescriber.nppes_provider_last_org_name, 
+	prescriber.specialty_description, 
+	SUM(prescription.total_claim_count) AS total_claim
 FROM prescriber
-INNER JOIN prescription
+	INNER JOIN prescription
 	ON prescriber.npi = prescription.npi
 GROUP BY prescriber.nppes_provider_first_name, prescriber.nppes_provider_last_org_name, prescriber.specialty_description, prescriber.npi
-ORDER BY total_claim DESC;
+ORDER BY total_claim DESC
+LIMIT 1;
 --answer 1b.) Bruce Pendley, Family Practice
+
 
 SELECT *
 FROM cbsa
@@ -67,9 +76,10 @@ FROM drug
 
 
 --Q2a.) Which specialty had the most total number of claims (totaled over all drugs)?
-SELECT prescriber.specialty_description, SUM(prescription.total_claim_count)
+SELECT prescriber.specialty_description, 
+	SUM(prescription.total_claim_count) AS total_claims
 FROM prescriber
-INNER JOIN prescription
+	INNER JOIN prescription
 	ON prescriber.npi = prescription.npi
 GROUP BY prescriber.specialty_description
 ORDER BY SUM(prescription.total_claim_count) DESC;
@@ -77,7 +87,9 @@ ORDER BY SUM(prescription.total_claim_count) DESC;
 
 
 --Q2b.)  Which specialty had the most total number of claims for opioids?
-SELECT prescriber.specialty_description, SUM(prescription.total_claim_count) AS total_claim, drug.opioid_drug_flag
+SELECT prescriber.specialty_description, 
+	SUM(prescription.total_claim_count) AS total_claim, 
+	drug.opioid_drug_flag
 FROM prescriber
 INNER JOIN prescription
 	ON prescriber.npi = prescription.npi
@@ -91,33 +103,16 @@ ORDER BY total_claim DESC;
 
 
 --Q2c.) Challenge Question: Are there any specialties that appear in the prescriber table that have no associated prescriptions in the prescription table?
-SELECT prescriber.specialty_description, SUM(prescription.total_claim_count) AS total_claim
+SELECT prescriber.specialty_description, 
+	SUM(prescription.total_claim_count) AS total_claim
 FROM prescriber
 LEFT JOIN prescription
 	ON prescriber.npi = prescription.npi
 GROUP BY prescriber.specialty_description
 HAVING SUM(prescription.total_claim_count) IS NULL
+ORDER BY prescriber.specialty_description;
 --answer2c: see query
 
---Q2d.) Difficult Bonus: For each specialty, report the percentage of total claims by that specialty which are for opioids. Which specialties have a high percentage of opioids?
-SELECT prescriber.specialty_description, 
-	SUM(prescription.total_claim_count) AS total_claims,
-	(SELECT 
-	 	SUM(prescription.total_claim_count)
-	FROM prescription
-	INNER JOIN drug
-	 ON prescription.drug_name = drug.drug_name
-	INNER JOIN prescriber
-	 ON prescriber.npi = prescription.npi
-	WHERE drug.opioid_drug_flag = 'Y'
-	GROUP BY prescriber.specialty_description) AS total_opiod_claims,
-FROM prescriber
-INNER JOIN prescription
-ON prescriber.npi = prescription.npi
-INNER JOIN drug
-ON prescription.drug_name = drug.drug_name
-WHERE drug.opioid_drug_flag = 'Y'
-GROUP BY prescriber.specialty_description
 
 --Q2d.) Difficult Bonus: For each specialty, report the percentage of total claims by that specialty which are for opioids. Which specialties have a high percentage of opioids?
 --answer2d??
@@ -143,6 +138,31 @@ FROM prescriber
 WHERE drug.opioid_drug_flag = 'Y'
 GROUP BY prescriber.specialty_description
 
+
+--correct answer 2d.)
+SELECT
+	specialty_description,
+	SUM(
+		CASE WHEN opioid_drug_flag = 'Y' THEN total_claim_count
+		ELSE 0
+	END
+	) as opioid_claims,
+	
+	SUM(total_claim_count) AS total_claims,
+	
+	SUM(
+		CASE WHEN opioid_drug_flag = 'Y' THEN total_claim_count
+		ELSE 0
+	END
+	) * 100.0 /  SUM(total_claim_count) AS opioid_percentage
+FROM prescriber
+INNER JOIN prescription
+USING(npi)
+INNER JOIN drug
+USING(drug_name)
+GROUP BY specialty_description
+--order by specialty_description;
+order by opioid_percentage desc
 
 --check # opioids in addiction medication
 SELECT SUM(prescription.total_claim_count), prescriber.specialty_description
@@ -212,8 +232,7 @@ SELECT drug_name,
 CASE 
 	WHEN opioid_drug_flag = 'Y' THEN 'opioid'
 	WHEN antibiotic_drug_flag = 'Y' THEN 'antibiotic'
-	ELSE 'neither'
-	END AS drug_type
+	ELSE 'neither' END AS drug_type
 FROM drug;
 --Q4a.) see query
 
@@ -224,7 +243,7 @@ SELECT *
 FROM prescription
 
 --Q4b.) Building off of the query you wrote for part a, determine whether more was spent (total_drug_cost) on opioids or on antibiotics. Hint: Format the total costs as MONEY for easier comparision.
-SELECT MONEY(SUM(prescription.total_drug_cost)),
+SELECT MONEY(SUM(prescription.total_drug_cost)) AS total_cost,
 CASE 
 	WHEN drug.opioid_drug_flag = 'Y' THEN 'opioid'
 	WHEN drug.antibiotic_drug_flag = 'Y' THEN 'antibiotic'
@@ -236,7 +255,7 @@ INNER JOIN prescription
 WHERE drug.antibiotic_drug_flag = 'Y'
 	OR drug.opioid_drug_flag = 'Y'
 GROUP BY drug_type
-ORDER BY money DESC;
+ORDER BY total_cost DESC;
 --answer 4b.) opioid
 
 SELECT *
@@ -249,12 +268,14 @@ FROM population
 --Q5a.) How many CBSAs are in Tennessee? Warning: The cbsa table contains information for all states, not just Tennessee.
 SELECT COUNT(cbsaname)
 FROM cbsa
-WHERE cbsaname LIKE '%TN%';
---answer5a.) 56
+INNER JOIN fips_county
+USING (fipscounty)
+WHERE state = 'TN';
+--answer5a.) 42
 
 
 --Q5b.)Which cbsa has the largest combined population? Which has the smallest? Report the CBSA name and total population.
-SELECT cbsa.cbsaname, SUM(population.population)
+SELECT cbsa.cbsaname, SUM(population.population) AS total_population
 FROM cbsa
 INNER JOIN population
 	ON cbsa.fipscounty = population.fipscounty
@@ -394,7 +415,7 @@ WHERE p1.specialty_description ILIKE 'Pain Management'
 	AND d.opioid_drug_flag = 'Y'
 GROUP BY p1.npi, d.drug_name
 ORDER BY p1.npi ASC
---answer7c.) see query
+--answer7b.) see query
 
 SELECT pr.npi, dg.drug_name, pn.total_claim_count
 FROM prescriber AS pr
@@ -405,7 +426,7 @@ WHERE pr.specialty_description ILIKE 'Pain Management'
 	AND pr.nppes_provider_city ILIKE 'Nashville'
 	AND dg.opioid_drug_flag = 'Y'
 ORDER BY pr.npi ASC
---another answer for 7c^
+--another answer for 7b^
 
 
 --Q7c.)Finally, if you have not done so already, fill in any missing values for total_claim_count with 0. Hint - Google the COALESCE function.
@@ -427,3 +448,13 @@ WHERE prescriber.specialty_description ILIKE 'Pain Management'
 GROUP BY prescriber.npi, drug.drug_name
 ORDER BY drug.drug_name ASC
 --answer7c: see query
+
+SELECT prescriber.npi, drug.drug_name,
+ COALESCE(prescription.total_claim_count,0)
+FROM prescriber
+CROSS JOIN drug
+LEFT JOIN prescription
+USING(npi, drug_name)
+WHERE prescriber.specialty_description = 'Pain Management' AND
+	prescriber.nppes_provider_city = 'NASHVILLE' AND
+	drug.opioid_drug_flag = 'Y';
